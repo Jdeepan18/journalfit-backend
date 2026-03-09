@@ -1,5 +1,5 @@
+```python
 import os
-import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import RecommendRequest, RecommendResponse, JournalResult
@@ -14,12 +14,11 @@ app = FastAPI(
     version="1.1.0"
 )
 
-# Robust CORS for production
-cors_origins_str = os.getenv("CORS_ORIGINS", '["http://localhost:3000"]')
-try:
-    cors_origins = json.loads(cors_origins_str)
-except Exception:
-    cors_origins = ["http://localhost:3000"]
+# Production-safe CORS handling
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,12 +31,6 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "JournalFit AI"}
-
-
-@app.get("/health")
-def health_check():
-    """Service health state for production monitoring."""
     return {
         "status": "active",
         "service": "JournalFit AI Neural Scorer",
@@ -50,11 +43,18 @@ def health_check():
 def recommend(request: RecommendRequest):
     # Strict validation and sanitization
     area = request.area.strip()
+
     if not area or len(area) < 3:
-        raise HTTPException(status_code=400, detail="Research area is too short or missing.")
-    
+        raise HTTPException(
+            status_code=400,
+            detail="Research area is too short or missing."
+        )
+
     if len(area) > 500:
-        raise HTTPException(status_code=400, detail="Research area exceeds maximum allowed length.")
+        raise HTTPException(
+            status_code=400,
+            detail="Research area exceeds maximum allowed length."
+        )
 
     try:
         all_journals = rank_journals(
@@ -63,15 +63,19 @@ def recommend(request: RecommendRequest):
             keywords=(request.keywords or "").strip()[:500],
             priority=request.priority or "Balanced"
         )
+
     except Exception as e:
-        # Prevent internal logic details from leaking to public users
         print(f"Neural Scoring Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="An internal ranking error occurred. Please try again.")
+        raise HTTPException(
+            status_code=500,
+            detail="An internal ranking error occurred. Please try again."
+        )
 
     top5 = all_journals[:5]
-    more = all_journals[5:15]  # Cap results for performance
-    
+    more = all_journals[5:15]
+
     return RecommendResponse(
         journals=[JournalResult(**j) for j in (top5 + more)],
         total_analyzed=len(all_journals)
     )
+```
